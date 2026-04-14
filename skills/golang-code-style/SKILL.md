@@ -27,6 +27,8 @@ Style rules that require human judgment — linters handle formatting, this skil
 
 When ignoring a rule, add a comment to the code.
 
+When generating new code comments, write the explanatory text in Simplified Chinese by default. English comments in the examples below are format references only; keep identifiers and fixed markers unchanged when applying this rule.
+
 ## Line Length & Breaking
 
 No rigid line limit, but lines beyond ~120 characters MUST be broken. Break at **semantic boundaries**, not arbitrary column counts. Function calls with 4+ arguments MUST use one argument per line — even when the prompt asks for single-line code:

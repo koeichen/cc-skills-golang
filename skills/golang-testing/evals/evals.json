@@ -105,30 +105,30 @@
   },
   {
     "id": 5,
-    "name": "consumer-site-interface-mocking",
-    "description": "Tests define interfaces at the consumer site and mock those, not concrete structs",
-    "prompt": "Test a `NotificationService` struct that has a `NotifyUser(userID string) error` method. It depends on two concrete structs: `SMTPClient` (with `Send(to, subject, body string) error`) and `AuditLogger` (with `Log(event string) error`). NotifyUser looks up the user's email, sends an email via SMTPClient, and logs the event via AuditLogger. Write comprehensive tests for NotifyUser.",
-    "trap": "Model embeds or wraps concrete SMTPClient/AuditLogger in mock structs, or creates test doubles that shadow the concrete types, instead of extracting consumer-site interfaces",
+    "name": "unit-boundary-mockey-isolation",
+    "description": "Unit tests isolate external dependencies with mockey and keep one TestXxx entry with case organization",
+    "prompt": "Test a `NotificationService` struct that has a `NotifyUser(userID string) error` method. It depends on user lookup, email send, and audit log operations in other modules/packages. Write comprehensive unit tests for NotifyUser with multiple scenarios.",
+    "trap": "Model writes integration-like tests that execute real dependencies, splits scenarios into multiple TestXxx functions, or uses non-mockey mocking styles",
     "assertions": [
       {
         "id": "5.1",
-        "text": "Defines interfaces for the dependencies (e.g., EmailSender, Logger) rather than using the concrete SMTPClient/AuditLogger structs directly in tests"
+        "text": "Keeps exactly one top-level test entry for this method (e.g., one `TestNotificationService_NotifyUser`)"
       },
       {
         "id": "5.2",
-        "text": "Creates mock implementations of these interfaces (using testify/mock or manual mocks)"
+        "text": "Organizes different scenarios inside that test entry as cases (for example nested `PatchConvey(\"case: ...\")`)"
       },
       {
         "id": "5.3",
-        "text": "Does NOT embed or wrap the concrete SMTPClient/AuditLogger structs in mock objects"
+        "text": "Uses `github.com/bytedance/mockey` for dependency isolation"
       },
       {
         "id": "5.4",
-        "text": "Uses dependency injection — NotificationService accepts interfaces, not concrete types"
+        "text": "Does not execute real external dependency behavior for unit scope (email/audit/user lookup paths are mocked)"
       },
       {
         "id": "5.5",
-        "text": "Tests verify both happy path (send succeeds) and error scenarios (send fails, log fails)"
+        "text": "Verifies both happy path and dependency error path assertions"
       }
     ]
   },
@@ -292,34 +292,34 @@
   },
   {
     "id": 12,
-    "name": "testify-suite-for-integration",
-    "description": "Integration tests use testify/suite with SetupSuite/TearDownTest for organized setup/teardown",
+    "name": "integration-build-tag-and-explicit-run-command",
+    "description": "Integration tests are isolated via build tags and explicit run command, without replacing unit-test style requirements",
     "prompt": "Write integration tests for an `OrderRepository` that interacts with PostgreSQL. It has `Create(order *Order) error`, `GetByID(id string) (*Order, error)`, and `ListByUserID(userID string) ([]*Order, error)`. Tests need database setup (create tables), per-test data cleanup, and graceful teardown. Organize them cleanly so setup/teardown happens automatically. These must not run during normal unit tests.",
-    "trap": "Model uses TestMain or plain setup functions with defer for teardown, mixing setup concerns into each test instead of a suite",
+    "trap": "Model forgets build tags or run command guidance, causing integration tests to leak into default unit-test runs",
     "assertions": [
       {
         "id": "12.1",
-        "text": "Uses testify/suite.Suite struct embedding for test organization"
-      },
-      {
-        "id": "12.2",
-        "text": "Has SetupSuite (or similar) for one-time database connection and schema setup"
-      },
-      {
-        "id": "12.3",
-        "text": "Has SetupTest or TearDownTest for per-test data cleanup (e.g., TRUNCATE)"
-      },
-      {
-        "id": "12.4",
-        "text": "Has TearDownSuite for graceful shutdown (close DB, docker-compose down)"
-      },
-      {
-        "id": "12.5",
         "text": "Uses `//go:build integration` build tag"
       },
       {
+        "id": "12.2",
+        "text": "Shows explicit run command for integration tests (`go test -tags=integration`)"
+      },
+      {
+        "id": "12.3",
+        "text": "Uses real database dependency instead of mocks"
+      },
+      {
+        "id": "12.4",
+        "text": "Includes setup and cleanup strategy (for example schema setup and per-test cleanup)"
+      },
+      {
+        "id": "12.5",
+        "text": "Does not use `testing.Short()` or ad-hoc `t.Skip()` as the primary isolation mechanism"
+      },
+      {
         "id": "12.6",
-        "text": "Has a runner function `func TestXxx(t *testing.T) { suite.Run(t, ...) }`"
+        "text": "Keeps assertions consistent with goconvey style when assertions are present"
       }
     ]
   },
@@ -382,6 +382,124 @@
       {
         "id": "14.5",
         "text": "Tests are independently runnable (any single test can pass when run in isolation with -run)"
+      }
+    ]
+  },
+  {
+    "id": 15,
+    "name": "single-test-entry-per-method",
+    "description": "A tested method should have one TestXxx entry and multiple scenarios as cases inside it",
+    "prompt": "Write tests for method `ComputeScore(input Input) (Output, error)` with scenarios: valid input, invalid input, upstream timeout, and empty input.",
+    "trap": "Model creates multiple test entry functions for the same method, e.g. TestComputeScore_Valid/TestComputeScore_Invalid",
+    "assertions": [
+      {
+        "id": "15.1",
+        "text": "Exactly one top-level `TestXxx` is created for `ComputeScore`"
+      },
+      {
+        "id": "15.2",
+        "text": "All requested scenarios are organized as cases inside that single test entry"
+      },
+      {
+        "id": "15.3",
+        "text": "Case names clearly describe condition and expected result"
+      }
+    ]
+  },
+  {
+    "id": 16,
+    "name": "patchconvey-case-organization",
+    "description": "Case organization uses PatchConvey nesting with clear AAA flow",
+    "prompt": "Write unit tests for `ApplyDiscount(order *Order) error` with scenarios: eligible discount, ineligible order, and pricing service error.",
+    "trap": "Model uses flat assertions without clear case scope or skips PatchConvey organization",
+    "assertions": [
+      {
+        "id": "16.1",
+        "text": "Uses top-level `PatchConvey(\"Test...\", t, func() {...})`"
+      },
+      {
+        "id": "16.2",
+        "text": "Uses nested `PatchConvey(\"case: ...\", func() {...})` for each scenario"
+      },
+      {
+        "id": "16.3",
+        "text": "Each case has clear setup, dependency mocking, execution, and assertion steps"
+      }
+    ]
+  },
+  {
+    "id": 17,
+    "name": "goconvey-assertion-style-unified",
+    "description": "Assertions use So + Should* style consistently and avoid mixed assertion libraries",
+    "prompt": "Write tests for `ParseConfig(raw string) (*Config, error)` with success and failure cases.",
+    "trap": "Model mixes `assert/require` with `So` in the same test file",
+    "assertions": [
+      {
+        "id": "17.1",
+        "text": "Uses `So(...)` with `Should*` assertions for test checks"
+      },
+      {
+        "id": "17.2",
+        "text": "Uses `ShouldResemble` for deep object equality where applicable"
+      },
+      {
+        "id": "17.3",
+        "text": "Does not mix testify assert/require calls in the same file"
+      }
+    ]
+  },
+  {
+    "id": 18,
+    "name": "mockey-required-for-dependency-isolation",
+    "description": "External dependency isolation uses bytedance/mockey as the primary mocking mechanism",
+    "prompt": "Write unit tests for `GenerateReport(userID int64) (Report, error)` where user profile lookup and billing summary come from other packages.",
+    "trap": "Model uses manual stubs, testify/mock, or no mocks for external calls",
+    "assertions": [
+      {
+        "id": "18.1",
+        "text": "Imports and uses `github.com/bytedance/mockey`"
+      },
+      {
+        "id": "18.2",
+        "text": "Mocks cross-module/package dependencies with mockey (`Mock(...).Return(...).Build()` or equivalent)"
+      },
+      {
+        "id": "18.3",
+        "text": "Keeps unit scope by avoiding real dependency invocation"
+      }
+    ]
+  },
+  {
+    "id": 19,
+    "name": "mockey-no-parallel-policy",
+    "description": "Tests that use mockey should avoid t.Parallel to reduce patching conflicts",
+    "prompt": "Write unit tests for `RefreshToken(userID int64) (string, error)` where token store and clock are mocked.",
+    "trap": "Model adds `t.Parallel()` in tests/cases that use mockey patching",
+    "assertions": [
+      {
+        "id": "19.1",
+        "text": "When mockey is used, test and subtests do not call `t.Parallel()`"
+      },
+      {
+        "id": "19.2",
+        "text": "Mock lifecycles are scoped (for example via PatchConvey/PatchRun)"
+      }
+    ]
+  },
+  {
+    "id": 20,
+    "name": "mockey-gcflags-guidance",
+    "description": "Test instructions include required gcflags guidance when mockey patching is used",
+    "prompt": "Write tests for `BuildSummary(ids []int64) ([]Summary, error)` and include how to run them reliably in local/CI.",
+    "trap": "Model omits Mockey runtime requirements and gives only plain `go test ./...` guidance",
+    "assertions": [
+      {
+        "id": "20.1",
+        "text": "Includes guidance to run mockey-based tests with `go test -gcflags=\"all=-l -N\" ...`"
+      },
+      {
+        "id": "20.2",
+        "text": "Notes that mockey patching may fail without disabled inlining/optimization"
       }
     ]
   }

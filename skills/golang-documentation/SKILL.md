@@ -88,6 +88,8 @@ Every exported function and method MUST have a doc comment. Document complex int
 
 The comment starts with the function name and a verb phrase. Focus on **why** and **when**, not restating what the code already shows. The code tells you _what_ happens — the comment should explain _why_ it exists, _when_ to use it, _what constraints_ apply, and _what can go wrong_. Include parameters, return values, error cases, and a usage example:
 
+The examples below use English only to demonstrate Go doc comment structure and conventions. When generating doc comments, package comments, file-level comments, inline comments, and other code comments, the explanatory text MUST be written in Simplified Chinese. Keep identifiers, type names, error names, and fixed markers such as `Deprecated:`, `TODO`, `BUG`, `Play:`, `Example:`, and `Output:` unchanged.
+
 ```go
 // CalculateDiscount computes the final price after applying tiered discounts.
 // Discounts are applied progressively based on order quantity: each tier unlocks

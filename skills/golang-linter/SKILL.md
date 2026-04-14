@@ -67,6 +67,8 @@ The [recommended .golangci.yml](./assets/.golangci.yml) provides a production-re
 
 Use `//nolint` directives sparingly — fix the root cause first.
 
+The examples below use English only to demonstrate `//nolint` syntax. When generating `//nolint:<linter>` justification comments, the explanation text MUST be written in Simplified Chinese. Keep the `//nolint:` directive, linter names, and other fixed markers unchanged.
+
 ```go
 // Good: specific linter + justification
 //nolint:errcheck // fire-and-forget logging, error is not actionable

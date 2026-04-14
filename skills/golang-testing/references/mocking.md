@@ -1,206 +1,169 @@
 # Mocking and Test Fixtures
 
-## Mocks with testify/mock
+## Preferred Stack
 
-Create interfaces for your dependencies, then mock them.
+For this skill, prefer:
 
-> For the full testify/mock API (argument matchers, call modifiers, verification), see the `samber/cc-skills-golang@golang-stretchr-testify` skill.
+- Mocking: `github.com/bytedance/mockey`
+- Assertions and test organization: `github.com/smartystreets/goconvey/convey`
 
-```go
-// Define the interface
-type Database interface {
-    GetUser(id string) (*User, error)
-    CreateUser(user *User) error
-}
+Avoid mixing multiple assertion styles in the same test file.
 
-// Mock implementation
-type MockDatabase struct {
-    mock.Mock
-}
+## Standard Test Skeleton
 
-func (m *MockDatabase) GetUser(id string) (*User, error) {
-    args := m.Called(id)
-    if args.Get(0) == nil {
-        return nil, args.Error(1)
-    }
-    return args.Get(0).(*User), args.Error(1)
-}
-
-func (m *MockDatabase) CreateUser(user *User) error {
-    args := m.Called(user)
-    return args.Error(0)
-}
-
-// Usage in tests
-func TestService_GetUser(t *testing.T) {
-    is := assert.New(t)
-
-    mockDB := new(MockDatabase)
-    service := NewService(mockDB)
-
-    expectedUser := &User{ID: "1", Name: "John"}
-    mockDB.On("GetUser", "1").Return(expectedUser, nil)
-
-    user, err := service.GetUser("1")
-
-    is.NoError(err)
-    is.Equal(expectedUser, user)
-    mockDB.AssertExpectations(t)
-}
-
-func TestService_GetUser_NotFound(t *testing.T) {
-    is := assert.New(t)
-
-    mockDB := new(MockDatabase)
-    service := NewService(mockDB)
-
-    mockDB.On("GetUser", "999").Return(nil, ErrNotFound)
-
-    user, err := service.GetUser("999")
-
-    is.Error(err)
-    is.ErrorIs(err, ErrNotFound)
-    is.Nil(user)
-    mockDB.AssertExpectations(t)
-}
-```
-
-## Mock Organization
-
-For larger codebases, organize mocks alongside the code they mock:
+Use one `TestXxx` per tested method, and put all scenarios in nested case blocks:
 
 ```go
-// user_service.go
-type UserService struct {
-    db    Database
-    email EmailService
-}
-type Database interface {
-    GetUser(id string) (*User, error)
-    CreateUser(user *User) error
-}
-type EmailService interface {
-    SendWelcomeEmail(to string) error
-}
-```
-
-```go
-// user_service_test.go
-package mypackage_test
+package service_test
 
 import (
+    "errors"
     "testing"
-    "github.com/stretchr/testify/assert"
-    "github.com/stretchr/testify/mock"
-    "path/to/mypackage"
+
+    . "github.com/bytedance/mockey"
+    . "github.com/smartystreets/goconvey/convey"
 )
 
-// MockDatabase implements mypackage.Database
-type MockDatabase struct {
-    mock.Mock
-}
-func (m *MockDatabase) GetUser(id string) (*mypackage.User, error) {
-    args := m.Called(id)
-    if args.Get(0) == nil { return nil, args.Error(1) }
-    return args.Get(0).(*mypackage.User), args.Error(1)
-}
-func (m *MockDatabase) CreateUser(user *mypackage.User) error {
-    return m.Called(user).Error(0)
-}
+func TestOrderService_Submit(t *testing.T) {
+    PatchConvey("TestOrderService_Submit", t, func() {
+        PatchConvey("case: valid request returns nil", func() {
+            req := &OrderReq{UserID: 1, Amount: 100}
 
-// MockEmailService implements mypackage.EmailService
-type MockEmailService struct {
-    mock.Mock
-}
-func (m *MockEmailService) SendWelcomeEmail(to string) error {
-    return m.Called(to).Error(0)
-}
+            Mock(validateReq).Return(nil).Build()
+            Mock(createOrder).Return(int64(101), nil).Build()
+            Mock(publishEvent).Return(nil).Build()
 
-func TestUserService_CreateUser(t *testing.T) {
-    mockDB := new(MockDatabase)
-    mockEmail := new(MockEmailService)
-    service := mypackage.NewUserService(mockDB, mockEmail)
+            err := Submit(req)
 
-    user := &mypackage.User{Name: "Test", Email: "test@example.com"}
-    mockDB.On("CreateUser", user).Return(nil)
-    mockEmail.On("SendWelcomeEmail", "test@example.com").Return(nil)
+            So(err, ShouldBeNil)
+        })
 
-    err := service.CreateUser(user)
+        PatchConvey("case: validate failed returns original error", func() {
+            req := &OrderReq{UserID: 0, Amount: 100}
+            wantErr := errors.New("invalid user")
 
-    assert.NoError(t, err)
-    mockDB.AssertExpectations(t)
-    mockEmail.AssertExpectations(t)
+            Mock(validateReq).Return(wantErr).Build()
+
+            err := Submit(req)
+
+            So(err, ShouldResemble, wantErr)
+        })
+    })
 }
 ```
 
-## Test Fixtures
+Recommended per-case structure:
 
-Create reusable test data in a separate package or file:
+1. Setup data
+2. Mock dependencies
+3. Execute logic
+4. Assert result
+
+## Unit Boundary Checklist
+
+Before writing a case, decide if it is a true unit test:
+
+- Is the behavior under assertion inside the current logic block?
+- Are external dependencies mocked (DB/cache/MQ/network/filesystem/other modules)?
+- Is time/randomness deterministic (mocked or fake clock)?
+- Is the case free of unrelated upstream/downstream flow assertions?
+
+If any answer is "no", split or refactor the test.
+
+## Mockey Patterns
+
+### Basic return
 
 ```go
-package fixtures
-
-import "time"
-
-var (
-    DefaultUser = &User{
-        ID:        "user-123",
-        Name:      "Jane Doe",
-        Email:     "jane@example.com",
-        CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-    }
-
-    AdminUser = &User{
-        ID:        "admin-1",
-        Name:      "Admin User",
-        Email:     "admin@example.com",
-        Role:      "admin",
-        CreatedAt: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-    }
-)
-
-func NewUser(name, email string) *User {
-    return &User{
-        ID:        "user-" + uuid.New().String(),
-        Name:      name,
-        Email:     email,
-        CreatedAt: time.Now(),
-    }
-}
+Mock(targetFn).Return(result1, result2).Build()
 ```
 
-## Time Mocking
-
-Use `clockwork` to test time-dependent code without `time.Sleep()`:
+### Hook replacement
 
 ```go
-import (
-    "testing"
-    "time"
-    "github.com/jonboulle/clockwork"
-    "github.com/stretchr/testify/assert"
-)
-
-func TestScheduler_AddJob(t *testing.T) {
-    is := assert.New(t)
-
-    fakeClock := clockwork.NewFakeClock()
-    scheduler := NewScheduler(fakeClock)
-
-    job := &Job{ID: "1", RunAt: time.Now().Add(1 * time.Hour)}
-    scheduler.AddJob(job)
-
-    is.Equal(1, scheduler.PendingCount())
-
-    // Advance fake time
-    fakeClock.Advance(2 * time.Hour)
-
-    is.Equal(0, scheduler.PendingCount())
-}
+Mock(targetFn).To(func(arg1 string) error {
+    return nil
+}).Build()
 ```
 
-Install clockwork:
+### Conditional mocking
+
+```go
+Mock(targetFn).
+    When(func(v int) bool { return v < 0 }).Return(errInvalid).
+    When(func(v int) bool { return v == 0 }).Return(nil).
+    Build()
+```
+
+### Lifecycle control
+
+- Prefer `PatchConvey` when using GoConvey assertions.
+- Use `PatchRun` for lightweight lifecycle scopes without GoConvey context.
+
+## Required Runtime Flag for Mockey
+
+Mockey patching depends on disabled inlining/optimization during tests:
 
 ```bash
-go get github.com/jonboulle/clockwork
+go test -gcflags="all=-l -N" ./...
 ```
+
+If mocks do not work, check in order:
+
+1. `Build()` called
+2. mock target signature/type match
+3. command includes `-gcflags="all=-l -N"`
+
+## Assertion Checklist
+
+Prefer these `So` assertions:
+
+- `ShouldEqual` for scalar equality
+- `ShouldResemble` for deep object equality
+- `ShouldBeNil` / `ShouldNotBeNil` for nil checks
+- `ShouldBeTrue` / `ShouldBeFalse` for booleans
+- `ShouldContainSubstring` / `ShouldHaveLength` for collections/strings
+
+Keep one assertion family per file.
+
+## Anti-pattern: Mixed Assertion Styles
+
+Bad example (mixed libraries):
+
+```go
+func TestUserService_Get(t *testing.T) {
+    PatchConvey("TestUserService_Get", t, func() {
+        user, err := GetUser(1)
+
+        So(err, ShouldBeNil)
+        assert.NotNil(t, user) // mixed assertion style
+    })
+}
+```
+
+Good example (single style):
+
+```go
+func TestUserService_Get(t *testing.T) {
+    PatchConvey("TestUserService_Get", t, func() {
+        user, err := GetUser(1)
+
+        So(err, ShouldBeNil)
+        So(user, ShouldNotBeNil)
+    })
+}
+```
+
+## Parallel Execution Policy
+
+- When using Mockey in a test/case: do not call `t.Parallel()`.
+- For pure functions without patching and without shared state: `t.Parallel()` is acceptable.
+
+## Time Control
+
+Prefer fake clocks for time-dependent behavior (for example `clockwork`) instead of real `time.Sleep()`.
+Keep unit tests deterministic and fast.
+
+## Fixtures
+
+Create reusable fixtures in dedicated files/packages when data setup is repeated. Keep fixture builders deterministic and explicit.
